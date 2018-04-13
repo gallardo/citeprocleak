@@ -1,4 +1,4 @@
-package de.ustutt.citeprocleak;
+package de.ustutt.citeproc;
 
 import de.undercouch.citeproc.CSL;
 import de.undercouch.citeproc.ItemDataProvider;
@@ -7,51 +7,30 @@ import de.undercouch.citeproc.csl.CSLItemDataBuilder;
 import de.undercouch.citeproc.csl.CSLType;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Arrays;
 import java.util.Random;
-import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-public class CiteprocLeakSerial {
-    private static final int REPETITIONS = 300;
-    private static final int MEAN_SIZE = 100;
+public class Benchmarks {
+    private static final int REPETITIONS = 200;
+    private static final int MEAN_SIZE = 50;
 
-
-    public static void main(String[] args) throws IOException {
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("Benchmark: same item");
-        System.out.println("Press enter to begin");
-        scanner.nextLine();
-        System.out.println("Entry\tTime (ms)\tMean last " + MEAN_SIZE + " (ms)");
-
-        benchmarkSameItemUsingAdhoc();
-
-//         AG 2018-04-13: Don't know why, but the first rendering after this loop takes again a while when using Nashorn
-        for (int j = 1; j <= 3; j++) {
-            System.out.println("Benchmark: random item");
-            System.out.println("Press enter to continue");
-            scanner.nextLine();
-            System.out.println("Entry\tTime (ms)\tMean last " + MEAN_SIZE + " (ms)");
-            benchmarkRandomItemUsingAdhoc();
-        }
-
-        System.out.println("Benchmark: use ItemDataProvider");
-        System.out.println("Press enter to continue");
-        scanner.nextLine();
-        System.out.println("Entry\tTime (ms)\tMean last " + MEAN_SIZE + " (ms)");
-        benchmarkSameItemUsingItemDataProviderRecreatingCSL();
-
-        System.out.println("Benchmark: use ItemDataProvider reusing CSL");
-        System.out.println("Press enter to continue");
-        scanner.nextLine();
-        System.out.println("Entry\tTime (ms)\tMean last " + MEAN_SIZE + " (ms)");
-        benchmarkSameItemUsingItemDataProviderReuseCSL();
-        System.out.println("Press enter to end");
-        scanner.nextLine();
+    /**
+     * @param intro intro text
+     * @param pw    to write to
+     */
+    private static void printHeader(String intro, PrintWriter pw) {
+        pw.println(intro);
+        pw.println("Entry\tTime (ms)\tMean last " + MEAN_SIZE + " (ms)");
     }
 
-    private static void benchmarkSameItemUsingAdhoc() throws IOException {
+    public static String benchmarkSameItemUsingAdhoc() {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw, true);
+        printHeader("Benchmark: same item using makeAdhocBibliography", pw);
         CSLItemData item;
         item = new CSLItemDataBuilder()
                 .type(CSLType.WEBPAGE)
@@ -65,12 +44,20 @@ public class CiteprocLeakSerial {
         lastsNanos = new long[MEAN_SIZE];
         Arrays.fill(lastsNanos, System.nanoTime());
         for (int i = 1; i <= REPETITIONS; i++) {
-            CSL.makeAdhocBibliography("ieee", item).makeString();
-            printBenchmark(lastsNanos, i, true);
+            try {
+                CSL.makeAdhocBibliography("ieee", item).makeString();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            printBenchmark(lastsNanos, i, true, pw);
         }
+        return "" + sw;
     }
 
-    private static void benchmarkSameItemUsingItemDataProviderRecreatingCSL() throws IOException {
+    public static String benchmarkSameItemUsingItemDataProviderRecreatingCSL() {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw, true);
+        printHeader("Benchmark: use same item provided by ItemDataProvider recreating CSL in each loop", pw);
 
         long[] lastsNanos;
         lastsNanos = new long[MEAN_SIZE];
@@ -98,22 +85,33 @@ public class CiteprocLeakSerial {
                     return null;
                 }
             };
-            CSL citeproc = new CSL(itemDataProvider, "ieee");
+            CSL citeproc = null;
+            try {
+                citeproc = new CSL(itemDataProvider, "ieee");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
             citeproc.setOutputFormat("html");
             citeproc.registerCitationItems("ID-0");
             citeproc.makeBibliography().makeString();
-            printBenchmark(lastsNanos, i, true);
+            printBenchmark(lastsNanos, i, true, pw);
         }
+        return "" + sw;
     }
 
-    private static void benchmarkSameItemUsingItemDataProviderReuseCSL() throws IOException {
+    public static String benchmarkSameItemUsingItemDataProviderReuseCSL() {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw, true);
+        printHeader("Benchmark: use same item provided by ItemDataProvider reusing CSL in all loops", pw);
+
         class FakeItemDataProvider implements ItemDataProvider {
             private CSLItemData item;
 
             private void setItem(CSLItemData item) {
                 this.item = item;
             }
+
             @Override
             public CSLItemData retrieveItem(String id) {
                 return item;
@@ -130,11 +128,17 @@ public class CiteprocLeakSerial {
         long[] lastsNanos;
         lastsNanos = new long[MEAN_SIZE];
         Arrays.fill(lastsNanos, System.nanoTime());
-        CSL citeproc = new CSL(itemDataProvider, "ieee");
+        CSL citeproc = null;
+        try {
+            citeproc = new CSL(itemDataProvider, "ieee");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         for (int i = 1; i <= REPETITIONS; i++) {
+            final String ID = "ID-" + UUID.randomUUID().toString();
             itemDataProvider.setItem(new CSLItemDataBuilder()
-                    .id("ID-" + i)
+                    .id(ID)
                     .type(CSLType.WEBPAGE)
                     .title("" + i + " - citeproc-java: A Citation Style Language (CSL) processor for Java")
                     .author("Michel", "Krämer")
@@ -143,17 +147,21 @@ public class CiteprocLeakSerial {
                     .accessed(2018, 4, 12)
                     .build());
             citeproc.setOutputFormat("html");
-            citeproc.registerCitationItems("ID-" + i);
+            citeproc.registerCitationItems(ID);
             citeproc.makeBibliography().makeString();
-            printBenchmark(lastsNanos, i, false);
+            printBenchmark(lastsNanos, i, false, pw);
         }
-        System.out.printf("Total time: %d ms (%d ns); Mean time: %d us%n",
+        pw.printf("Total time: %d ms (%d ns); Mean time: %d us%n",
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos),
                 (System.nanoTime() - startNanos),
                 TimeUnit.NANOSECONDS.toMicros((System.nanoTime() - startNanos) / REPETITIONS));
+        return "" + sw;
     }
 
-    private static void benchmarkRandomItemUsingAdhoc() throws IOException {
+    static String benchmarkRandomItemUsingAdhoc() {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw, true);
+        printHeader("Benchmark: use a random created item using makeAdhocBibliography", pw);
         CSLItemData item;
         long[] lastsNanos;
         Random seed = new Random();
@@ -178,25 +186,31 @@ public class CiteprocLeakSerial {
                 itemDataBuilder.accessed(2018, 4, 12);
             }
             item = itemDataBuilder.build();
-            CSL.makeAdhocBibliography("ieee", item).makeString();
-            printBenchmark(lastsNanos, i, true);
+            try {
+                CSL.makeAdhocBibliography("ieee", item).makeString();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            printBenchmark(lastsNanos, i, true, pw);
         }
+        return "" + sw;
     }
 
     /**
      * @param printAll if {@code false}, print only the first 100 entries and after them, only once every 100. Else
      *                 print all entries
+     * @param pw       Writer to write to
      */
-    private static void printBenchmark(long[] lastsNanos, int i, boolean printAll) {
+    private static void printBenchmark(long[] lastsNanos, int i, boolean printAll, PrintWriter pw) {
         final int population_size = lastsNanos.length;
         lastsNanos[i % population_size] = System.nanoTime();
         final long currentMillis = TimeUnit.NANOSECONDS.toMillis(lastsNanos[i % population_size] - lastsNanos[(i - 1) % population_size]);
         final long currentMeanSize = i < population_size ? i : population_size;
         final long currentMeanMillis = TimeUnit.NANOSECONDS.toMillis((lastsNanos[i % population_size] - lastsNanos[(i + 1) % population_size]) / currentMeanSize);
         if (printAll) {
-            System.out.printf("%05d\t% 9d\t%d%n", i, currentMillis, currentMeanMillis);
-        } else if ((i < 100) || (i%100==0)) {
-            System.out.printf("%05d\t% 9d\t%d%n", i, currentMillis, currentMeanMillis);
+            pw.printf("%05d\t% 9d\t%d%n", i, currentMillis, currentMeanMillis);
+        } else if ((i < 100) || (i % 100 == 0)) {
+            pw.printf("%05d\t% 9d\t%d%n", i, currentMillis, currentMeanMillis);
         }
     }
 }
