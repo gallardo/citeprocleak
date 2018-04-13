@@ -2,6 +2,7 @@ group 'de.ustutt'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'application'
 
 sourceCompatibility = 1.8
 
@@ -25,3 +26,8 @@ dependencies {
 }
 
 mainClassName = "de.ustutt.citeprocleak.CiteprocLeakSerial"
+
+// Main waits for enter key
+run {
+    standardInput = System.in
+}
