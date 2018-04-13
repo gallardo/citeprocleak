@@ -1,4 +1,4 @@
-package de.stuttgart.uni.citeprocleak;
+package de.ustutt.citeprocleak;
 
 import de.undercouch.citeproc.CSL;
 import de.undercouch.citeproc.ItemDataProvider;
